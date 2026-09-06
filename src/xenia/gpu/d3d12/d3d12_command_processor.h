@@ -249,6 +249,12 @@ class D3D12CommandProcessor final : public CommandProcessor {
   bool EnsureMemexportRangeInDeviceBuffer(uint32_t base_bytes,
                                           uint32_t size_bytes);
 
+  // readback_memexport: the pre-two-buffer path. Copies the ranges the draw
+  // just exported out of the device buffer, waits for the GPU and writes them
+  // into guest RAM. Only used when the draw was not routed to the host buffer.
+  void IssueDraw_MemexportReadback();
+  ID3D12Resource* RequestMemexportReadbackBuffer(uint32_t size);
+
   // Returns a pipeline with deferred creation by its handle. May return nullptr
   // if failed to create the pipeline.
   ID3D12PipelineState* GetD3D12PipelineByHandle(void* handle) const {
@@ -766,6 +772,11 @@ class D3D12CommandProcessor final : public CommandProcessor {
   uint32_t scratch_buffer_size_ = 0;
   D3D12_RESOURCE_STATES scratch_buffer_state_;
   bool scratch_buffer_used_ = false;
+
+  // Single synchronous readback buffer for readback_memexport (grown on
+  // demand, always awaited before reuse).
+  ID3D12Resource* memexport_readback_buffer_ = nullptr;
+  uint32_t memexport_readback_buffer_size_ = 0;
 
   // Two-buffer memexport page tracking (data + methods), shared with the Vulkan
   // backend as a class-body fragment so each backend gets its own non-virtual,

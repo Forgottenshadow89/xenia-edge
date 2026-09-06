@@ -41,6 +41,7 @@ DEFINE_bool(d3d12_bindless, true,
 DECLARE_bool(clear_memory_page_state);
 DECLARE_bool(d3d12_debug);
 DECLARE_bool(gpu_debug_markers);
+DECLARE_bool(readback_memexport);
 DECLARE_bool(submit_on_primary_buffer_end);
 
 namespace xe {
@@ -1407,6 +1408,9 @@ void D3D12CommandProcessor::ShutdownContext() {
   ResetMemexportPages();
   ResetResolveReadWatch();
 
+  ui::d3d12::util::ReleaseAndNull(memexport_readback_buffer_);
+  memexport_readback_buffer_size_ = 0;
+
   ShutdownZPDQueryResources();
   zpd_host_query_pool_.reset();
 
@@ -2528,9 +2532,11 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   // draws consuming memexport output use the host buffer (aliasing guest RAM)
   // so the output stays CPU coherent and consumers read it directly. Only
   // texture-sampled ranges are copied into the device buffer on demand. Inert
-  // without the host buffer.
+  // without the host buffer, and disabled by readback_memexport, which keeps
+  // the output in the device buffer and reads it back to guest RAM instead.
   bool route_to_host = false;
-  if (shared_memory_->GetHostBuffer() != nullptr) {
+  if (shared_memory_->GetHostBuffer() != nullptr &&
+      !cvars::readback_memexport) {
     route_to_host =
         memexport_used ||
         (any_memexport_pages_written_ &&
@@ -3073,10 +3079,104 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         MarkMemexportPagesWritten(memexport_range.base_address_dwords << 2,
                                   memexport_range.size_bytes);
       }
+    } else if (cvars::readback_memexport) {
+      // Output landed in the device buffer. Read it back into guest RAM now so
+      // the CPU sees it regardless of how (or whether) it synchronizes.
+      IssueDraw_MemexportReadback();
     }
   }
 
   return true;
+}
+
+ID3D12Resource* D3D12CommandProcessor::RequestMemexportReadbackBuffer(
+    uint32_t size) {
+  if (size == 0) {
+    return nullptr;
+  }
+  size = AlignReadbackBufferSize(size);
+  if (size > memexport_readback_buffer_size_) {
+    const ui::d3d12::D3D12Provider& provider = GetD3D12Provider();
+    ID3D12Device* device = provider.GetDevice();
+    D3D12_RESOURCE_DESC buffer_desc;
+    ui::d3d12::util::FillBufferResourceDesc(buffer_desc, size,
+                                            D3D12_RESOURCE_FLAG_NONE);
+    ID3D12Resource* buffer;
+    if (FAILED(device->CreateCommittedResource(
+            &ui::d3d12::util::kHeapPropertiesReadback,
+            provider.GetHeapFlagCreateNotZeroed(), &buffer_desc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&buffer)))) {
+      XELOGE("Failed to create a {} MB memexport readback buffer", size >> 20);
+      return nullptr;
+    }
+    // The previous buffer may still be the destination of a copy in flight.
+    if (memexport_readback_buffer_ != nullptr) {
+      resources_for_deletion_.emplace_back(GetCurrentSubmission(),
+                                           memexport_readback_buffer_);
+    }
+    memexport_readback_buffer_ = buffer;
+    memexport_readback_buffer_size_ = size;
+  }
+  return memexport_readback_buffer_;
+}
+
+void D3D12CommandProcessor::IssueDraw_MemexportReadback() {
+  uint32_t memexport_total_size = 0;
+  for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+    memexport_total_size += memexport_range.size_bytes;
+  }
+  if (memexport_total_size == 0) {
+    return;
+  }
+  ID3D12Resource* readback_buffer =
+      RequestMemexportReadbackBuffer(memexport_total_size);
+  if (readback_buffer == nullptr) {
+    return;
+  }
+  // Order the export (a UAV write) before the copy out of the device buffer.
+  shared_memory_->UseAsCopySource();
+  SubmitBarriers();
+  InsertDebugMarker("Memexport Readback (sync): %u bytes, %zu ranges",
+                    memexport_total_size, memexport_ranges_.size());
+  ID3D12Resource* shared_memory_buffer = shared_memory_->GetBuffer();
+  uint32_t readback_buffer_offset = 0;
+  for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+    deferred_command_list_.D3DCopyBufferRegion(
+        readback_buffer, readback_buffer_offset, shared_memory_buffer,
+        memexport_range.base_address_dwords << 2, memexport_range.size_bytes);
+    readback_buffer_offset += memexport_range.size_bytes;
+  }
+  if (!AwaitAllQueueOperationsCompletion()) {
+    return;
+  }
+  D3D12_RANGE readback_range;
+  readback_range.Begin = 0;
+  readback_range.End = memexport_total_size;
+  void* readback_mapping;
+  if (FAILED(readback_buffer->Map(0, &readback_range, &readback_mapping))) {
+    XELOGE("Failed to map the memexport readback buffer");
+    return;
+  }
+  const uint8_t* readback_bytes =
+      reinterpret_cast<const uint8_t*>(readback_mapping);
+  for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+    std::memcpy(
+        memory_->TranslatePhysical(memexport_range.base_address_dwords << 2),
+        readback_bytes, memexport_range.size_bytes);
+    readback_bytes += memexport_range.size_bytes;
+  }
+  D3D12_RANGE readback_write_range = {};
+  readback_buffer->Unmap(0, &readback_write_range);
+  static uint32_t readback_memexport_log_count = 0;
+  if (readback_memexport_log_count < 8 ||
+      !(readback_memexport_log_count % 1024)) {
+    XELOGGPU(
+        "readback_memexport: read back memexport draw #{} ({} bytes, {} "
+        "ranges)",
+        readback_memexport_log_count, memexport_total_size,
+        memexport_ranges_.size());
+  }
+  ++readback_memexport_log_count;
 }
 
 void D3D12CommandProcessor::InitializeTrace() {

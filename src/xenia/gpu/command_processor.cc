@@ -114,6 +114,17 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    readback_memexport, false,
+    "Read memory export output back to the CPU right after every draw that "
+    "uses it, the way it worked before the two-buffer memexport routing: the "
+    "draw writes the device buffer, the exported ranges are copied to a "
+    "readback buffer, the GPU is awaited and the data is written into guest "
+    "RAM. Disables the two-buffer routing for the title, so every consumer "
+    "(GPU or CPU, fenced or not) sees complete data. Costs a GPU stall per "
+    "exporting draw. Direct3D 12 only.",
+    "GPU");
+
+DEFINE_bool(
     precise_interpolation, true,
     "Manually interpolate pixel shader inputs with barycentric coordinates to "
     "exactly match the guest and avoid hardware interpolation precision "
