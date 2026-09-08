@@ -690,7 +690,12 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_SUCCESS;
   }
 
-  auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
+  const xam::XCONTENT_AGGREGATE_DATA* selected_update = &title_updates.front();
+  if (title_updates.size() > 1) {
+    selected_update = SelectTitleUpdate(title_updates, title_module);
+  }
+
+  auto patch_module = LoadTitleUpdate(selected_update, title_module);
   if (!patch_module) {
     return X_STATUS_SUCCESS;
   }
@@ -744,6 +749,74 @@ std::vector<xam::XCONTENT_AGGREGATE_DATA> KernelState::FindTitleUpdate(
 
   return xam_state_->content_manager()->ListContent(
       1, 0, title_id, xe::XContentType::kInstaller);
+}
+
+const xam::XCONTENT_AGGREGATE_DATA* KernelState::SelectTitleUpdate(
+    const std::vector<xam::XCONTENT_AGGREGATE_DATA>& title_updates,
+    const object_ref<UserModule> title_module) {
+  // Same policy as xenia-canary PR 1201 ("Always select most compatible and
+  // newest TU"): keep the updates whose title id and media id match the running
+  // executable (a media id mismatch is tolerated only with
+  // allow_incompatible_title_update) and take the highest version. Canary reads
+  // those values out of the package container header; here they come from the
+  // patch XEX's own execution info, which is available for both container and
+  // extracted packages. Each candidate is mounted and loaded in turn, and the
+  // UPDATE content released again so the caller can mount the winner.
+  const xex2_opt_execution_info* title_info =
+      title_module->xex_module()->opt_execution_info();
+
+  const xam::XCONTENT_AGGREGATE_DATA* best_update = nullptr;
+  uint32_t best_version = 0;
+  for (const auto& entry : title_updates) {
+    auto candidate = LoadTitleUpdate(&entry, title_module);
+    content_manager()->CloseContent("UPDATE");
+    if (!candidate || !candidate->xex_module()->is_patch()) {
+      XELOGW("Title update '{}' could not be loaded, skipping it",
+             entry.file_name());
+      continue;
+    }
+    const xex2_opt_execution_info* info =
+        candidate->xex_module()->opt_execution_info();
+    if (!info) {
+      XELOGW("Title update '{}' has no execution info, skipping it",
+             entry.file_name());
+      continue;
+    }
+    const xex2_version version = info->version();
+    XELOGI("Title update '{}': title {:08X}, media {:08X}, version {}.{}.{}.{}",
+           entry.file_name(), uint32_t(info->title_id),
+           uint32_t(info->media_id), +version.major, +version.minor,
+           +version.build, +version.qfe);
+    if (title_info) {
+      if (info->title_id != title_info->title_id) {
+        XELOGW("Title update '{}' is for another title, skipping it",
+               entry.file_name());
+        continue;
+      }
+      if (info->media_id != title_info->media_id &&
+          !cvars::allow_incompatible_title_update) {
+        XELOGW(
+            "Title update '{}' is for media {:08X}, the title is media {:08X}, "
+            "skipping it",
+            entry.file_name(), uint32_t(info->media_id),
+            uint32_t(title_info->media_id));
+        continue;
+      }
+    }
+    if (!best_update || info->version_value > best_version) {
+      best_update = &entry;
+      best_version = info->version_value;
+    }
+  }
+
+  if (!best_update) {
+    XELOGW(
+        "None of the {} title updates matches the title, trying the first one",
+        title_updates.size());
+    return &title_updates.front();
+  }
+  XELOGI("Selected title update '{}'", best_update->file_name());
+  return best_update;
 }
 
 const object_ref<UserModule> KernelState::LoadTitleUpdate(
