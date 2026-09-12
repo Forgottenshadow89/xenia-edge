@@ -54,8 +54,8 @@ msgid "&Configuration"
 msgstr "配置(&C)"
 
 #: src/xenia/app/emulator_window.cc:898
-msgid "&Controllers"
-msgstr "控制器(&C)"
+msgid "C&ontrollers"
+msgstr "控制器(&O)"
 
 #: src/xenia/app/emulator_window.cc:786
 msgid "&File"
@@ -484,8 +484,8 @@ msgid "Gamepad"
 msgstr "游戏手柄"
 
 #: src/xenia/ui/game_list_panel_wx.cc:96
-msgid "Gameplay"
-msgstr "可游玩"
+msgid "Gets in game"
+msgstr "可进入游戏"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:458
 msgid "Gamer Bio:"

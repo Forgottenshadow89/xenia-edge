@@ -56,7 +56,7 @@ msgid "&Configuration"
 msgstr "&Налаштування"
 
 #: src/xenia/app/emulator_window.cc:898
-msgid "&Controllers"
+msgid "C&ontrollers"
 msgstr "&Контролери"
 
 #: src/xenia/app/emulator_window.cc:786
@@ -370,7 +370,7 @@ msgstr "Домініканська Республіка"
 
 #: src/xenia/app/emulator_window.cc:809
 msgid "E&xit"
-msgstr "&Вихід"
+msgstr "Ви&хід"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:93
 msgid "Ecuador"
@@ -486,8 +486,8 @@ msgid "Gamepad"
 msgstr "Геймпад"
 
 #: src/xenia/ui/game_list_panel_wx.cc:96
-msgid "Gameplay"
-msgstr "Геймплей"
+msgid "Gets in game"
+msgstr "Входить у гру"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:458
 msgid "Gamer Bio:"
@@ -754,7 +754,7 @@ msgstr "Завантаження ігор…"
 
 #: src/xenia/ui/game_list_panel_wx.cc:98
 msgid "Loads"
-msgstr "Завантажується"
+msgstr "Запускається"
 
 #: src/xenia/app/emulator_window.cc:2003
 msgid "Login"
@@ -963,7 +963,7 @@ msgstr "Філіппіни"
 
 #: src/xenia/ui/game_list_panel_wx.cc:94
 msgid "Playable"
-msgstr "Грабельна"
+msgstr "Іграбельна"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:147
 msgid "Poland"
@@ -1314,7 +1314,7 @@ msgstr "Увімкнути звук"
 
 #: src/xenia/ui/game_list_panel_wx.cc:100
 msgid "Unplayable"
-msgstr "Неграбельна"
+msgstr "Неіграбельна"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:341
 #: src/xenia/ui/quick_settings_dialog_wx.cc:619
@@ -1510,7 +1510,7 @@ msgstr "Закрити панель відомостей"
 
 #: src/xenia/ui/game_info_panel_wx.cc:215
 msgid "Configuration"
-msgstr "Конфігурація"
+msgstr "Налаштування"
 
 #: src/xenia/ui/game_info_panel_wx.cc:437
 msgid "Details"

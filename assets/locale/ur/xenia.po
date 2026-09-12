@@ -54,8 +54,8 @@ msgid "&Configuration"
 msgstr "کنفیگریشن(&C)"
 
 #: src/xenia/app/emulator_window.cc:898
-msgid "&Controllers"
-msgstr "کنٹرولرز(&C)"
+msgid "C&ontrollers"
+msgstr "کنٹرولرز(&O)"
 
 #: src/xenia/app/emulator_window.cc:786
 msgid "&File"
@@ -484,8 +484,8 @@ msgid "Gamepad"
 msgstr "گیم پیڈ"
 
 #: src/xenia/ui/game_list_panel_wx.cc:96
-msgid "Gameplay"
-msgstr "گیم پلے"
+msgid "Gets in game"
+msgstr "گیم میں داخل ہوتا ہے"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:458
 msgid "Gamer Bio:"
@@ -752,7 +752,7 @@ msgstr "ٹائٹلز لوڈ ہو رہے ہیں…"
 
 #: src/xenia/ui/game_list_panel_wx.cc:98
 msgid "Loads"
-msgstr "لوڈز"
+msgstr "شروع ہوتا ہے"
 
 #: src/xenia/app/emulator_window.cc:2003
 msgid "Login"
@@ -1506,7 +1506,7 @@ msgstr "معلوماتی پین بند کریں"
 
 #: src/xenia/ui/game_info_panel_wx.cc:215
 msgid "Configuration"
-msgstr "تشکیل"
+msgstr "کنفیگریشن"
 
 #: src/xenia/ui/game_info_panel_wx.cc:437
 msgid "Details"

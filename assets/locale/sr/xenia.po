@@ -53,10 +53,10 @@ msgstr "&Звук"
 
 #: src/xenia/app/emulator_window.cc:824
 msgid "&Configuration"
-msgstr "&Подешавања"
+msgstr "П&одешавања"
 
 #: src/xenia/app/emulator_window.cc:898
-msgid "&Controllers"
+msgid "C&ontrollers"
 msgstr "&Контролери"
 
 #: src/xenia/app/emulator_window.cc:786
@@ -65,7 +65,7 @@ msgstr "&Датотека"
 
 #: src/xenia/app/emulator_window.cc:884
 msgid "&Help"
-msgstr "&Помоћ"
+msgstr "По&моћ"
 
 #: src/xenia/app/emulator_window.cc:877
 msgid "&Install Content..."
@@ -93,7 +93,7 @@ msgstr "&Алати"
 
 #: src/xenia/app/emulator_window.cc:853
 msgid "&View"
-msgstr "&Приказ"
+msgstr "П&риказ"
 
 #: src/xenia/app/emulator_window.cc:867
 msgid "&Volume"
@@ -486,8 +486,8 @@ msgid "Gamepad"
 msgstr "Гејмпад"
 
 #: src/xenia/ui/game_list_panel_wx.cc:96
-msgid "Gameplay"
-msgstr "Геймплеј"
+msgid "Gets in game"
+msgstr "Улази у игру"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:458
 msgid "Gamer Bio:"
@@ -754,7 +754,7 @@ msgstr "Учитавање игара…"
 
 #: src/xenia/ui/game_list_panel_wx.cc:98
 msgid "Loads"
-msgstr "Учитава"
+msgstr "Покреће се"
 
 #: src/xenia/app/emulator_window.cc:2003
 msgid "Login"
@@ -1508,7 +1508,7 @@ msgstr "Затвори таблу са подацима"
 
 #: src/xenia/ui/game_info_panel_wx.cc:215
 msgid "Configuration"
-msgstr "Конфигурација"
+msgstr "Подешавања"
 
 #: src/xenia/ui/game_info_panel_wx.cc:437
 msgid "Details"

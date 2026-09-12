@@ -19,11 +19,26 @@
 #include "xenia/gpu/render_target_cache.h"
 #include "xenia/gpu/spirv_compatibility.h"
 
+DECLARE_bool(spirv_fine_derivatives);
+
 namespace xe {
 namespace gpu {
 
+namespace {
+// The implementation picks which pixels of the quad a coarse derivative uses.
+spv::Op DerivativeXOp() {
+  return cvars::spirv_fine_derivatives ? spv::OpDPdxFine : spv::OpDPdxCoarse;
+}
+spv::Op DerivativeYOp() {
+  return cvars::spirv_fine_derivatives ? spv::OpDPdyFine : spv::OpDPdyCoarse;
+}
+}  // namespace
+
 void SpirvShaderTranslator::ProcessVertexFetchInstruction(
     const ParsedVertexFetchInstruction& instr) {
+  if (BisectSkipsInstruction()) {
+    return;
+  }
   UpdateInstructionPredication(instr.is_predicated, instr.predicate_condition);
 
   uint32_t used_result_components = instr.result.GetUsedResultComponents();
@@ -538,10 +553,14 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
     }
   }
   StoreResult(instr.result, result);
+  BisectSnapshotAfterInstruction();
 }
 
 void SpirvShaderTranslator::ProcessTextureFetchInstruction(
     const ParsedTextureFetchInstruction& instr) {
+  if (BisectSkipsInstruction()) {
+    return;
+  }
   UpdateInstructionPredication(instr.is_predicated, instr.predicate_condition);
 
   EnsureBuildPointAvailable();
@@ -654,8 +673,8 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
       derivative_components_remaining &=
           ~(UINT32_C(1) << derivative_component_index);
       result[derivative_component_index] = builder_->createUnaryOp(
-          (derivative_component_index & 0b01) ? spv::OpDPdyCoarse
-                                              : spv::OpDPdxCoarse,
+          (derivative_component_index & 0b01) ? DerivativeYOp()
+                                              : DerivativeXOp(),
           type_float_,
           (derivative_component_index & 0b10) ? derivative_function_y
                                               : derivative_function_x);
@@ -1841,12 +1860,15 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               builder_->makeFloatConstant(instr.attributes.lod_bias));
         }
 
-        // Cube auto-LOD without register gradients uses implicit LOD + bias to
-        // work around wrong-mip explicit cube gradients on Vulkan. Other dims
-        // keep explicit gradients, matching the DXBC ground-truth path.
-        bool use_lod_bias = use_computed_lod &&
-                            !instr.attributes.use_register_gradients &&
-                            instr.dimension == xenos::FetchOpDimension::kCube;
+        // Cube and 3D auto-LOD without register gradients use implicit LOD +
+        // bias. Explicit cube gradients pick the wrong mip on Vulkan, and
+        // explicit 3D gradients of a coordinate that is constant across the
+        // quad make NVIDIA return a different texel in one lane of the quad.
+        // 1D and 2D keep explicit gradients.
+        bool use_lod_bias =
+            use_computed_lod && !instr.attributes.use_register_gradients &&
+            (instr.dimension == xenos::FetchOpDimension::kCube ||
+             instr.dimension == xenos::FetchOpDimension::k3DOrStacked);
 
         if (use_lod_bias) {
           // The per-axis gradient exponent biases can't be applied to the
@@ -1914,15 +1936,15 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               // For wide 1D textures, coordinates[0] and coordinates[1]
               // have been remapped. Compute gradients from both.
               gradient_h_x = builder_->createUnaryOp(
-                  spv::OpDPdxCoarse, type_float_, coordinates[0]);
+                  DerivativeXOp(), type_float_, coordinates[0]);
               gradient_v_x = builder_->createUnaryOp(
-                  spv::OpDPdyCoarse, type_float_, coordinates[0]);
+                  DerivativeYOp(), type_float_, coordinates[0]);
               // For wide 1D textures, also compute Y gradients.
               // coordinates[1] is non-zero only for wide 1D.
               gradient_h_y = builder_->createUnaryOp(
-                  spv::OpDPdxCoarse, type_float_, coordinates[1]);
+                  DerivativeXOp(), type_float_, coordinates[1]);
               gradient_v_y = builder_->createUnaryOp(
-                  spv::OpDPdyCoarse, type_float_, coordinates[1]);
+                  DerivativeYOp(), type_float_, coordinates[1]);
               gradient_h_x = builder_->createNoContractionBinOp(
                   spv::OpFMul, type_float_, gradient_h_x, lod_gradient_scale_h);
               gradient_v_x = builder_->createNoContractionBinOp(
@@ -1982,12 +2004,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                     builder_->createCompositeConstruct(type_float2_,
                                                        id_vector_temp_);
                 builder_->addCapability(spv::CapabilityDerivativeControl);
-                gradients_h =
-                    builder_->createUnaryOp(spv::OpDPdxCoarse, type_float2_,
-                                            gradient_coordinate_vector);
-                gradients_v =
-                    builder_->createUnaryOp(spv::OpDPdyCoarse, type_float2_,
-                                            gradient_coordinate_vector);
+                gradients_h = builder_->createUnaryOp(
+                    DerivativeXOp(), type_float2_, gradient_coordinate_vector);
+                gradients_v = builder_->createUnaryOp(
+                    DerivativeYOp(), type_float2_, gradient_coordinate_vector);
               }
               gradients_h = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float2_, gradients_h,
@@ -2029,12 +2049,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                     builder_->createCompositeConstruct(type_float3_,
                                                        id_vector_temp_);
                 builder_->addCapability(spv::CapabilityDerivativeControl);
-                gradients_h =
-                    builder_->createUnaryOp(spv::OpDPdxCoarse, type_float3_,
-                                            gradient_coordinate_vector);
-                gradients_v =
-                    builder_->createUnaryOp(spv::OpDPdyCoarse, type_float3_,
-                                            gradient_coordinate_vector);
+                gradients_h = builder_->createUnaryOp(
+                    DerivativeXOp(), type_float3_, gradient_coordinate_vector);
+                gradients_v = builder_->createUnaryOp(
+                    DerivativeYOp(), type_float3_, gradient_coordinate_vector);
               }
               gradients_h = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float3_, gradients_h,
@@ -2086,7 +2104,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           spv::Id sample_result_unsigned_3d, sample_result_signed_3d;
           {
             // 3D.
-            if (use_computed_lod) {
+            if (use_computed_lod && !use_lod_bias) {
               texture_parameters.gradX = gradients_h;
               texture_parameters.gradY = gradients_v;
             }
@@ -2105,7 +2123,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           spv::Id sample_result_unsigned_stacked, sample_result_signed_stacked;
           {
             // 2D stacked.
-            if (use_computed_lod) {
+            if (use_computed_lod && !use_lod_bias) {
               // Extract 2D gradients for stacked textures which are 2D arrays.
               uint_vector_temp_.clear();
               uint_vector_temp_.push_back(0);
@@ -2129,7 +2147,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
             bool vol_min_filter_is_linear = instr.attributes.vol_min_filter ==
                                             xenos::TextureFilter::kLinear;
             spv::Id vol_filter_is_linear = spv::NoResult;
-            if (use_computed_lod &&
+            if (use_computed_lod && !use_lod_bias &&
                 (vol_mag_filter_is_fetch_const ||
                  vol_min_filter_is_fetch_const ||
                  vol_mag_filter_is_linear != vol_min_filter_is_linear)) {
@@ -2731,6 +2749,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
     result_vector = result[result_component_index];
   }
   StoreResult(instr.result, result_vector);
+  BisectSnapshotAfterInstruction();
 }
 
 size_t SpirvShaderTranslator::FindOrAddTextureBinding(
